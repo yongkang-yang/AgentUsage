@@ -4,6 +4,7 @@ import SwiftUI
 
 /// A short message near the bottom of the screen, like the one Raycast shows
 /// after a command: it never takes focus and ignores the mouse.
+@MainActor
 final class HUD {
     static let shared = HUD()
 

@@ -211,6 +211,7 @@ final class DropPanel: NSPanel {
         isMovable = false
         hidesOnDeactivate = false
         collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        roundCorners(Metrics.panelRadius)
     }
 
     override var canBecomeKey: Bool { true }

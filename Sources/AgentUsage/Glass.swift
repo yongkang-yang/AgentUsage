@@ -111,3 +111,26 @@ enum Metrics {
     static let rowInset: CGFloat = 6
     static let rowRadius: CGFloat = cardRadius - rowInset
 }
+
+extension NSWindow {
+    /// Rounds a borderless window, shadow included. Masking the frame view's
+    /// layer rounds the material, but the window server still casts the
+    /// shadow from the window's own corner radius, which leaves square
+    /// corners showing on a light desktop. Only the private
+    /// `_setCornerRadius:` changes that; it is looked up at runtime, so if a
+    /// future macOS drops it the content stays rounded and only the shadow
+    /// goes back to the stock shape.
+    func roundCorners(_ radius: CGFloat) {
+        guard let frame = contentView?.superview ?? contentView else { return }
+        frame.wantsLayer = true
+        frame.layer?.cornerRadius = radius
+        frame.layer?.cornerCurve = .continuous
+        frame.layer?.masksToBounds = true
+        let selector = NSSelectorFromString("_setCornerRadius:")
+        if responds(to: selector) {
+            typealias Setter = @convention(c) (NSWindow, Selector, CGFloat) -> Void
+            unsafeBitCast(method(for: selector), to: Setter.self)(self, selector, radius)
+        }
+        invalidateShadow()
+    }
+}
