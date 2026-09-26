@@ -5,6 +5,11 @@ import Foundation
 /// local Connect API it serves to the editor. Antigravity has to be open.
 public enum AntigravityProvider {
     static let service = "/exa.language_server_pb.LanguageServerService/"
+    /// The CLI's server once accepted any token; agy 1.2 and later reject it.
+    static let cliDummyToken = "cli-dummy-token"
+    static let cliUnsupported = AgentError(
+        "CLI Unsupported",
+        "The agy CLI (1.2 and later) only answers requests carrying its own CSRF token, which it keeps to itself. Open the Antigravity app to see its quotas here.")
 
     struct ProcessInfo: Equatable {
         let pid: Int
@@ -18,6 +23,9 @@ public enum AntigravityProvider {
             let ports = try await listeningPorts(pid: process.pid, env)
             let client = Client(transport: localTransport, csrfToken: process.csrfToken)
             guard let port = await client.workingPort(ports) else {
+                if client.sawCSRFRejection && process.csrfToken == cliDummyToken {
+                    throw cliUnsupported
+                }
                 throw AgentError("Port Error", "Antigravity port detection failed: no working API port found")
             }
             client.httpsPort = port
@@ -84,7 +92,7 @@ public enum AntigravityProvider {
             if token == nil {
                 // The app always passes a real token; only the CLI accepts a dummy.
                 guard isCLI else { continue }
-                token = "cli-dummy-token"
+                token = cliDummyToken
             }
             let port = firstMatch(#"(?i)--extension_server_port[=\s]+(\S+)"#, in: command).flatMap(Int.init)
             let info = ProcessInfo(pid: pid, csrfToken: token!, extensionPort: port)
@@ -119,6 +127,8 @@ public enum AntigravityProvider {
         let csrfToken: String
         var httpsPort = 0
         var httpPort = 0
+        /// A port answered, but refused the CSRF token.
+        var sawCSRFRejection = false
 
         init(transport: @escaping UsageEnvironment.Transport, csrfToken: String) {
             self.transport = transport
@@ -142,6 +152,7 @@ public enum AntigravityProvider {
             let (data, response) = try await transport(request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard status == 200 else {
+                if status == 401, String(decoding: data, as: UTF8.self).contains("CSRF") { sawCSRFRejection = true }
                 throw AgentError("API Error", "Antigravity API error: HTTP \(status): \(String(decoding: data, as: UTF8.self))")
             }
             guard let object = JSON.object(data) else { throw AgentError.parse("Invalid JSON from local Antigravity API") }
