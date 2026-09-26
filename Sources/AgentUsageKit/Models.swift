@@ -4,7 +4,7 @@ import Foundation
 
 /// The agents this app tracks, in the order they are listed.
 public enum AgentKind: String, CaseIterable, Codable, Sendable {
-    case claude, codex, copilot, cursor, opencodeGo
+    case claude, codex, opencodeGo, cursor, copilot
 
     public var name: String {
         switch self {
