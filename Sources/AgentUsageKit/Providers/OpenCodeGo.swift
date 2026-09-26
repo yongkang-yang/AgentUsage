@@ -25,9 +25,10 @@ public enum OpenCodeGoProvider {
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
         do {
             let (data, response) = try await env.fetch(request)
-            let expired = AgentError("Auth Expired", "OpenCode Go session expired or invalid. Update your auth cookie in Settings.")
+            let expired = AgentError("Auth Expired", "opencode.ai didn't accept the auth cookie and sent the request to its login page. In a browser where the workspace's Go page opens, copy the value of the `auth` cookie for opencode.ai (not auth.opencode.ai), and check that the workspace ID is the one in that page's URL.")
             if response.statusCode == 401 || response.statusCode == 403 { throw expired }
-            if response.url?.path.contains("/login") == true { throw expired }
+            // A rejected session is redirected through /auth/authorize to /console/login.
+            if let path = response.url?.path, path.contains("/login") || path.hasPrefix("/auth") { throw expired }
             guard (200..<300).contains(response.statusCode) else { throw AgentError.http(response.statusCode) }
             return try parse(String(decoding: data, as: UTF8.self), now: env.now())
         } catch let error as AgentError {
