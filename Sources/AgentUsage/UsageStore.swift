@@ -95,7 +95,7 @@ final class UsageStore: ObservableObject {
             case .codex: result = await CodexProvider.fetch(env, additionalHomes: codexHomes)
             case .copilot: result = await CopilotProvider.fetch(env, manualToken: copilotToken)
             case .cursor: result = [await CursorProvider.fetch(env, manualCookie: cursorCookie)]
-            case .opencodeGo: result = [await OpenCodeGoProvider.fetch(env, workspaceID: workspace, authCookie: cookie)]
+            case .opencodeGo: result = await OpenCodeGoProvider.fetch(env, workspaceIDs: workspace, cookie: cookie)
             }
             guard let self else { return }
             self.reports[agent] = result

@@ -29,7 +29,7 @@ green from 50 %, amber from 20 %, red below.
 | **Codex** | ChatGPT's Codex usage endpoint, for every login in `~/.codex` (`auth.json` and `accounts/*.auth.json`) | Run `codex login`; add more Codex homes in Settings |
 | **GitHub Copilot** | GitHub's `copilot_internal/user` endpoint | `gh auth login`, or `GITHUB_TOKEN`/`GH_TOKEN` in your shell, or a token in Settings |
 | **Cursor** | cursor.com's dashboard API, with the login Cursor.app keeps | Sign in to Cursor.app, or paste a cursor.com Cookie header in Settings |
-| **OpenCode Go** | The workspace's Go page on opencode.ai (there's no API) | Workspace ID and `auth` cookie in Settings |
+| **OpenCode Go** | The OpenCode console's Go status API, per workspace | Workspace IDs and the `__Host-console_session` cookie in Settings |
 
 Each agent can be switched off in Settings → Agents. Tokens you enter (Copilot,
 Cursor's and OpenCode Go's cookies) are kept in the login keychain.
@@ -48,12 +48,15 @@ Details carried over from the extension:
 - **Cursor**: total plan usage with the Auto and API pools, or request counts on
   older plans; on-demand spend (yours and the team's). The headline is the
   tighter of Auto and API.
-- **OpenCode Go**: rolling (2 h), weekly and monthly usage; monthly is the headline.
+- **OpenCode Go**: rolling (5 h), weekly and monthly usage with dollar amounts, one card per
+  workspace. The extension parsed the old server-rendered Go page; the console is now a
+  single-page app, so this reads the API behind it instead.
 
 ### Moving over from the Raycast extension
 
-Most agents need nothing: they read the same local logins the extension did. Copy
-the **OpenCode Go workspace ID and auth cookie**, a **Copilot token** or **Cursor
+Most agents need nothing: they read the same local logins the extension did. Enter
+the **OpenCode Go workspace IDs and console session cookie** (the extension's `auth`
+cookie no longer works), a **Copilot token** or **Cursor
 cookie** if you had set one, and any **additional Codex homes** from Raycast → Settings → Extensions →
 Agent Usage into Settings → Agents.
 

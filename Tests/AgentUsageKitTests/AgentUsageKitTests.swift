@@ -123,33 +123,34 @@ final class CopilotTests: XCTestCase {
 }
 
 final class OpenCodeGoTests: XCTestCase {
-    /// The extension's fixture: a Solid.js hydration script from the Go page.
-    private let html = #"""
-    <!DOCTYPE html>
-    <html><body>
-    <script>self.$R=self.$R||[];
-    _$HY.r["billing.get[\"wrk_FAKE123456789\"]""]=$R[13]=$R[2]($R[14]={p:0,s:0,f:0});
-    _$HY.r["lite.subscription.get[\"wrk_FAKE123456789\"]""]=$R[17]=$R[2]($R[18]={p:0,s:0,f:0});
-    ($R[24]=(r,d)=>{r.s(d),r.p.s=1,r.p.v=d})($R[18],$R[27]={mine:!0,useBalance:!1,rollingUsage:$R[28]={status:"ok",resetInSec:7302,usagePercent:13},weeklyUsage:$R[29]={status:"ok",resetInSec:406676,usagePercent:32},monthlyUsage:$R[30]={status:"ok",resetInSec:1188832,usagePercent:89}});
-    $R[24]($R[20],$R[27]);
-    $R[24]($R[14],$R[31]={customerID:"cus_FAKECUSTOMER123",paymentMethodID:"pm_FAKEPAYMENT123",paymentMethodType:"card",paymentMethodLast4:"4242",balance:123456789,reload:!1,reloadAmount:10,reloadAmountMin:10,reloadTrigger:5,reloadTriggerMin:5,monthlyLimit:50,monthlyUsage:50000000,timeMonthlyUsageUpdated:$R[32]=new Date("2026-01-01T00:00:00.000Z"),reloadError:null,timeReloadError:null,subscription:null,subscriptionID:null,subscriptionPlan:null,timeSubscriptionBooked:null,timeSubscriptionSelected:null,lite:$R[33]={},liteSubscriptionID:"sub_FAKESUBSCRIPTION123"});
-    $R[24]($R[16],$R[31]);
-    </script></body></html>
-    """#
+    /// The shape the console's /api/go/status returns (its GoStatus schema).
+    private let status: [String: Any] = [
+        "product": "go-plus", "useBalance": false, "cancelAtPeriodEnd": false,
+        "access": ["startsAt": "2026-09-13T00:00:00.000Z", "endsAt": "2026-10-13T00:00:00.000Z", "cancelAtPeriodEnd": false,
+                   "meters": ["fiveHour": ["resetsAt": "2027-01-15T12:00:00.000Z", "limitMicroCents": "4800000000", "usedMicroCents": "0"],
+                              "week": ["startsAt": "2027-01-11T00:00:00.000Z", "resetsAt": "2027-01-18T00:00:00.000Z",
+                                       "limitMicroCents": "12000000000", "usedMicroCents": "840000000"],
+                              "month": ["limitMicroCents": "24000000000", "usedMicroCents": "22560000000"]]],
+    ]
 
-    func testParsesHydrationData() throws {
-        let report = try OpenCodeGoProvider.parse(html, now: now)
-        XCTAssertEqual(report.plan, "Go")
-        XCTAssertEqual(report.headline, 11)
-        XCTAssertEqual(report.groups[0].windows.map(\.label), ["Rolling (2h)", "Weekly", "Monthly"])
-        XCTAssertEqual(report.groups[0].windows.map(\.percentRemaining), [87, 68, 11])
-        XCTAssertEqual(report.groups[0].windows[0].resetsAt, now.addingTimeInterval(7302))
+    func testParsesMeters() throws {
+        let report = try OpenCodeGoProvider.parse(status, now: now)
+        XCTAssertEqual(report.plan, "Go Plus")
+        XCTAssertEqual(report.groups[0].windows.map(\.label), ["Rolling (5h)", "Weekly", "Monthly"])
+        XCTAssertEqual(report.groups[0].windows.map(\.percentRemaining), [100, 93, 6])
+        XCTAssertEqual(report.groups[0].windows.map(\.note), ["$0.00 / $48.00", "$8.40 / $120.00", "$225.60 / $240.00"])
+        XCTAssertEqual(report.headline, 6)
+        XCTAssertEqual(report.groups[0].windows[2].resetsAt, UsageFormat.parseDate("2026-10-13T00:00:00.000Z"))
     }
 
-    func testMissingDataIsAnError() {
-        XCTAssertThrowsError(try OpenCodeGoProvider.parse("<html><body>No data here</body></html>"))
-        XCTAssertThrowsError(try OpenCodeGoProvider.parse(""))
-        XCTAssertEqual(OpenCodeGoProvider.pageURL(workspaceID: " abc ")?.absoluteString, "https://opencode.ai/workspace/wrk_abc/go")
+    func testNoSubscriptionAndInputs() {
+        XCTAssertThrowsError(try OpenCodeGoProvider.parse(["product": "go"])) {
+            XCTAssertEqual(($0 as? AgentError)?.label, "No Subscription")
+        }
+        XCTAssertEqual(OpenCodeGoProvider.parseWorkspaces(" wrk_A\nB, wrk_A "), ["wrk_A", "wrk_B"])
+        XCTAssertEqual(OpenCodeGoProvider.cookieHeader(" st_1 "), "__Host-console_session=st_1")
+        XCTAssertEqual(OpenCodeGoProvider.cookieHeader("a=1; b=2"), "a=1; b=2")
+        XCTAssertNil(OpenCodeGoProvider.cookieHeader(" "))
     }
 }
 

@@ -1,87 +1,135 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
 
-/// OpenCode Go's rolling, weekly and monthly usage, read from the Solid.js
-/// hydration data on the workspace's Go page. There is no API, so this needs
-/// the workspace ID and the browser session's `auth` cookie.
+/// OpenCode Go's rolling (5-hour), weekly and monthly usage, from the
+/// console API the Go page itself calls. One report per workspace, each
+/// signed in with the console's session cookie.
 public enum OpenCodeGoProvider {
-    static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    static let apiURL = URL(string: "https://opencode.ai/console/api")!
+    static let sessionCookie = "__Host-console_session"
 
-    static func pageURL(workspaceID: String) -> URL? {
-        let id = workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let full = id.hasPrefix("wrk_") ? id : "wrk_\(id)"
-        return URL(string: "https://opencode.ai/workspace/\(full)/go")
+    public static func fetch(_ env: UsageEnvironment, workspaceIDs: String, cookie: String) async -> [AgentReport] {
+        let workspaces = parseWorkspaces(workspaceIDs)
+        let header = cookieHeader(cookie)
+        guard !workspaces.isEmpty, let header else {
+            return [AgentReport(agent: .opencodeGo, error: .notConfigured(
+                "Add your OpenCode workspace IDs and the console session cookie in Settings."))]
+        }
+        let names = await workspaceNames(env, cookie: header)
+        let labelled = workspaces.count > 1
+        var reports: [AgentReport] = []
+        for workspace in workspaces {
+            let label = labelled ? (names[workspace] ?? String(workspace.suffix(6))) : nil
+            reports.append(await fetch(env, workspace: workspace, cookie: header, label: label))
+        }
+        return reports
     }
 
-    public static func fetch(_ env: UsageEnvironment, workspaceID: String, authCookie: String) async -> AgentReport {
-        let cookie = authCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !workspaceID.trimmingCharacters(in: .whitespaces).isEmpty, !cookie.isEmpty,
-              let url = pageURL(workspaceID: workspaceID) else {
-            return AgentReport(agent: .opencodeGo, error: .notConfigured("Add your OpenCode workspace ID and auth cookie in Settings."))
+    /// Workspace IDs, one per line or comma; a bare ID gets its `wrk_` prefix.
+    static func parseWorkspaces(_ value: String) -> [String] {
+        var result: [String] = []
+        for entry in value.split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == " " }) {
+            let id = entry.trimmingCharacters(in: .whitespaces)
+            guard !id.isEmpty else { continue }
+            let full = id.hasPrefix("wrk_") ? id : "wrk_\(id)"
+            if !result.contains(full) { result.append(full) }
         }
-        var request = URLRequest(url: url, timeoutInterval: 15)
-        request.setValue("auth=\(cookie)", forHTTPHeaderField: "Cookie")
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        return result
+    }
+
+    /// The session cookie's bare value, or a whole Cookie header copied from
+    /// a request.
+    static func cookieHeader(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.contains("=") ? trimmed : "\(sessionCookie)=\(trimmed)"
+    }
+
+    static func request(_ path: String, cookie: String, workspace: String? = nil) -> URLRequest {
+        var request = URLRequest(url: apiURL.appendingPathComponent(path), timeoutInterval: 15)
+        // The header carries the session; stored cookies must not replace it.
+        request.httpShouldHandleCookies = false
+        request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let workspace { request.setValue(workspace, forHTTPHeaderField: "x-org-id") }
+        return request
+    }
+
+    static let expired = AgentError("Auth Expired",
+        "OpenCode's console didn't accept the session cookie. In a browser signed in to opencode.ai, copy the value of the __Host-console_session cookie (DevTools → Application → Cookies → https://opencode.ai) into Settings.")
+
+    static func fetch(_ env: UsageEnvironment, workspace: String, cookie: String, label: String?) async -> AgentReport {
         do {
-            let (data, response) = try await env.fetch(request)
-            let expired = AgentError("Auth Expired", "opencode.ai didn't accept the auth cookie and sent the request to its login page. In a browser where the workspace's Go page opens, copy the value of the `auth` cookie for opencode.ai (not auth.opencode.ai), and check that the workspace ID is the one in that page's URL.")
-            if response.statusCode == 401 || response.statusCode == 403 { throw expired }
-            // A rejected session is redirected through /auth/authorize to /console/login.
-            if let path = response.url?.path, path.contains("/login") || path.hasPrefix("/auth") { throw expired }
+            let (data, response) = try await env.fetch(request("go/status", cookie: cookie, workspace: workspace))
+            if response.statusCode == 401 { throw expired }
+            if response.statusCode == 403 || response.statusCode == 404 {
+                throw AgentError("No Access", "This session can't see workspace \(workspace). Check the ID in Settings.")
+            }
             guard (200..<300).contains(response.statusCode) else { throw AgentError.http(response.statusCode) }
-            return try parse(String(decoding: data, as: UTF8.self), now: env.now())
+            guard let body = JSON.object(data) else { throw AgentError.parse("Invalid OpenCode Go response.") }
+            return try parse(body, id: "opencode-go-\(workspace)", label: label, now: env.now())
         } catch let error as AgentError {
-            return AgentReport(agent: .opencodeGo, error: error)
+            return AgentReport(agent: .opencodeGo, id: "opencode-go-\(workspace)", account: label, error: error)
         } catch {
-            return AgentReport(agent: .opencodeGo, error: .network(error.localizedDescription))
+            return AgentReport(agent: .opencodeGo, id: "opencode-go-\(workspace)", account: label,
+                               error: .network(error.localizedDescription))
         }
     }
 
-    struct Quota: Equatable {
-        let status: String
-        let resetInSec: Int
-        let usagePercent: Int
+    /// Workspace names from the account's organisations, best effort: any
+    /// object in the response carrying a `wrk_` id and a name.
+    static func workspaceNames(_ env: UsageEnvironment, cookie: String) async -> [String: String] {
+        guard let (data, response) = try? await env.fetch(request("orgs", cookie: cookie)), response.statusCode == 200,
+              let root = try? JSONSerialization.jsonObject(with: data) else { return [:] }
+        var names: [String: String] = [:]
+        func walk(_ value: Any) {
+            if let object = value as? [String: Any] {
+                if let id = JSON.string(object["id"]), id.hasPrefix("wrk_"), let name = JSON.string(object["name"]) {
+                    names[id] = name
+                }
+                object.values.forEach(walk)
+            } else if let array = value as? [Any] {
+                array.forEach(walk)
+            }
+        }
+        walk(root)
+        return names
     }
 
-    static func quota(_ name: String, in text: String) -> Quota? {
-        guard let body = firstMatch(#"\#(name):\$R\[\d+\]=\{([^}]+)\}"#, in: text) else { return nil }
-        return Quota(status: firstMatch(#"status:"([^"]+)""#, in: body) ?? "unknown",
-                     resetInSec: Int(firstMatch(#"resetInSec:(\d+)"#, in: body) ?? "") ?? 0,
-                     usagePercent: Int(firstMatch(#"usagePercent:(\d+)"#, in: body) ?? "") ?? 0)
-    }
+    static let products = ["go": "Go", "go-plus": "Go Plus"]
 
-    /// The hydration script assigns the billing and usage objects to `$R`
-    /// slots; their fields are matched directly rather than by slot number,
-    /// which changes between deployments.
-    static func parse(_ html: String, now: Date = Date()) throws -> AgentReport {
-        guard let script = firstMatch(#"(<script>self\.\$R=[\s\S]*?</script>)"#, in: html) else {
-            throw AgentError.parse("Could not find usage data in the OpenCode Go page. The page format may have changed.")
-        }
-        let rolling = quota("rollingUsage", in: script)
-        let weekly = quota("weeklyUsage", in: script)
-        let monthly = quota("monthlyUsage", in: script)
-        guard rolling != nil || weekly != nil || monthly != nil else {
-            throw AgentError.parse("Could not find usage data in the OpenCode Go page. The page format may have changed.")
-        }
+    /// Amounts arrive as micro-cents in strings (they're BigInts in the console).
+    static func microCents(_ value: Any?) -> Double? { JSON.number(value) }
 
-        func window(_ label: String, _ quota: Quota) -> UsageWindow {
-            UsageWindow(label: label, percentRemaining: 100 - quota.usagePercent,
-                        resetsAt: quota.resetInSec > 0 ? now.addingTimeInterval(TimeInterval(quota.resetInSec)) : nil)
+    static func parse(_ body: [String: Any], id: String = "opencode-go", label: String? = nil, now: Date = Date()) throws -> AgentReport {
+        let plan = JSON.string(body["product"]).map { products[$0] ?? $0 }
+        guard let access = body["access"] as? [String: Any], let meters = access["meters"] as? [String: Any] else {
+            throw AgentError("No Subscription", "This workspace has no active OpenCode Go subscription.")
         }
-        var windows: [UsageWindow] = []
-        if let rolling { windows.append(window("Rolling (2h)", rolling)) }
-        if let weekly { windows.append(window("Weekly", weekly)) }
-        if let monthly { windows.append(window("Monthly", monthly)) }
+        let endsAt = UsageFormat.parseDate(access["endsAt"])
+        func window(_ label: String, _ key: String, reset: Date?) -> UsageWindow? {
+            guard let meter = meters[key] as? [String: Any], let limit = microCents(meter["limitMicroCents"]),
+                  let used = microCents(meter["usedMicroCents"]) else { return nil }
+            let percentUsed = limit > 0 ? used / limit * 100 : 0
+            return UsageWindow(label: label, percentRemaining: UsageFormat.clampPercent(100 - percentUsed), resetsAt: reset,
+                               note: String(format: "$%.2f / $%.2f", used / 1e8, limit / 1e8))
+        }
+        let fiveHour = meters["fiveHour"] as? [String: Any]
+        let week = meters["week"] as? [String: Any]
+        let windows = [
+            window("Rolling (5h)", "fiveHour", reset: UsageFormat.parseDate(fiveHour?["resetsAt"])),
+            window("Weekly", "week", reset: UsageFormat.parseDate(week?["resetsAt"])),
+            window("Monthly", "month", reset: endsAt),
+        ].compactMap { $0 }
+        guard !windows.isEmpty else { throw AgentError.parse("OpenCode Go reported no usage meters.") }
 
-        // The plan appears in the billing object as subscriptionPlan:"…" or null.
-        var plan = "Go"
-        if let value = firstMatch(#"customerID:"cus_[^"]*"[^}]*?subscriptionPlan:([^,}]+)"#, in: script)?
-            .trimmingCharacters(in: .whitespaces), value != "null" {
-            plan = value.replacingOccurrences(of: "\"", with: "")
+        var details: [String] = []
+        if let endsAt {
+            let cancelling = access["cancelAtPeriodEnd"] as? Bool ?? body["cancelAtPeriodEnd"] as? Bool ?? false
+            details.append("\(cancelling ? "Ends" : "Renews") \(endsAt.formatted(date: .abbreviated, time: .omitted))")
         }
-        // Monthly is the extension's headline; fall back to the others.
-        let headline = monthly.map { 100 - $0.usagePercent } ?? windows.map(\.percentRemaining).min()
-        return AgentReport(agent: .opencodeGo, plan: plan, headline: headline, groups: [UsageGroup(windows: windows)], fetchedAt: now)
+        return AgentReport(agent: .opencodeGo, id: id, account: label, plan: plan,
+                           headline: windows.map(\.percentRemaining).min(), groups: [UsageGroup(windows: windows)],
+                           details: details, fetchedAt: now)
     }
 }

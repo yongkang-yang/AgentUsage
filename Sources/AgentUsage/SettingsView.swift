@@ -55,9 +55,10 @@ private struct AgentsSettingsView: View {
                 SecureField("Cookie header (optional)", text: $cursorCookie)
                     .onChange(of: cursorCookie) { _, value in Keychain.write(value, for: UsageStore.Keys.cursorCookie) }
             }
-            section(.opencodeGo, "OpenCode Go has no API: the app reads your workspace's Go page. The workspace ID is in the dashboard URL (wrk_…); the auth cookie is the `auth` cookie of a logged-in opencode.ai session (DevTools → Application → Cookies).") {
-                TextField("Workspace ID", text: $workspace, prompt: Text("wrk_…"))
-                SecureField("Auth cookie", text: $cookie)
+            section(.opencodeGo, "Read from the OpenCode console, one card per workspace. Workspace IDs are in the Go page's URL (opencode.ai/console/wrk_…/go), one per line. The session cookie is `__Host-console_session` of a signed-in opencode.ai tab (DevTools → Application → Cookies → https://opencode.ai).") {
+                TextField("Workspace IDs", text: $workspace, prompt: Text("wrk_…, one per line"), axis: .vertical)
+                    .lineLimit(1...4)
+                SecureField("Console session cookie", text: $cookie)
                     .onChange(of: cookie) { _, value in Keychain.write(value, for: UsageStore.Keys.opencodeCookie) }
             }
         }
