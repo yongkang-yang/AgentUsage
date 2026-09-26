@@ -4,14 +4,14 @@ import Foundation
 
 /// The agents this app tracks, in the order they are listed.
 public enum AgentKind: String, CaseIterable, Codable, Sendable {
-    case claude, codex, copilot, antigravity, opencodeGo
+    case claude, codex, copilot, cursor, opencodeGo
 
     public var name: String {
         switch self {
         case .claude: "Claude Code"
         case .codex: "Codex"
         case .copilot: "GitHub Copilot"
-        case .antigravity: "Antigravity"
+        case .cursor: "Cursor"
         case .opencodeGo: "OpenCode Go"
         }
     }
@@ -22,7 +22,7 @@ public enum AgentKind: String, CaseIterable, Codable, Sendable {
         case .claude: "claude-icon"
         case .codex: "codex-icon"
         case .copilot: "copilot-icon"
-        case .antigravity: "antigravity-icon"
+        case .cursor: "cursor-icon"
         case .opencodeGo: "opencode-go-icon"
         }
     }
@@ -46,7 +46,7 @@ public struct UsageWindow: Equatable, Sendable, Identifiable {
     }
 }
 
-/// Windows that belong together, e.g. one of Antigravity's quota groups.
+/// Windows that belong together, e.g. Codex's per-model limits.
 public struct UsageGroup: Equatable, Sendable, Identifiable {
     public var id: String { title ?? "" }
     public let title: String?

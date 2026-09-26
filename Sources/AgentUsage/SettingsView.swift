@@ -36,6 +36,7 @@ private struct AgentsSettingsView: View {
     @AppStorage(UsageStore.Keys.opencodeWorkspace) private var workspace = ""
     @State private var copilotToken = Keychain.read(UsageStore.Keys.copilotToken)
     @State private var cookie = Keychain.read(UsageStore.Keys.opencodeCookie)
+    @State private var cursorCookie = Keychain.read(UsageStore.Keys.cursorCookie)
 
     var body: some View {
         Form {
@@ -50,8 +51,9 @@ private struct AgentsSettingsView: View {
                 SecureField("Extra token (optional)", text: $copilotToken)
                     .onChange(of: copilotToken) { _, value in Keychain.write(value, for: UsageStore.Keys.copilotToken) }
             }
-            section(.antigravity, "Asked of Antigravity's running language server, so Antigravity has to be open. Nothing to set up.") {
-                EmptyView()
+            section(.cursor, "Read with the login Cursor.app keeps on this Mac. Without Cursor.app, paste the Cookie header of a logged-in cursor.com request (DevTools → Network → any /api request → Request Headers → Cookie).") {
+                SecureField("Cookie header (optional)", text: $cursorCookie)
+                    .onChange(of: cursorCookie) { _, value in Keychain.write(value, for: UsageStore.Keys.cursorCookie) }
             }
             section(.opencodeGo, "OpenCode Go has no API: the app reads your workspace's Go page. The workspace ID is in the dashboard URL (wrk_…); the auth cookie is the `auth` cookie of a logged-in opencode.ai session (DevTools → Application → Cookies).") {
                 TextField("Workspace ID", text: $workspace, prompt: Text("wrk_…"))
@@ -99,7 +101,6 @@ private struct GeneralSettingsView: View {
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
-                Toggle("Show the lowest remaining % in the menu bar", isOn: $store.showsPercentInMenuBar)
                 Picker("Refresh every", selection: $store.refreshMinutes) {
                     ForEach([5, 15, 30, 60], id: \.self) { Text("\($0) minutes").tag($0) }
                 }
@@ -115,7 +116,7 @@ private struct GeneralSettingsView: View {
             } header: {
                 Text("Shortcut")
             } footer: {
-                Text("Works in every app. Right-click the menu bar icon for every agent's number at a glance.")
+                Text("Works in every app. Hover the menu bar icon, or right-click it, for every agent's number at a glance.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

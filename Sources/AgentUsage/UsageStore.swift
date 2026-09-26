@@ -11,9 +11,9 @@ final class UsageStore: ObservableObject {
         static let codexHomes = "codexAdditionalHomes"
         static let opencodeWorkspace = "opencodeGoWorkspaceID"
         static let refreshMinutes = "refreshMinutes"
-        static let showPercent = "menuBarShowsPercent"
         static let copilotToken = "copilotToken"
         static let opencodeCookie = "opencodeGoAuthCookie"
+        static let cursorCookie = "cursorCookieHeader"
     }
 
     @Published private(set) var reports: [AgentKind: [AgentReport]] = [:]
@@ -33,9 +33,6 @@ final class UsageStore: ObservableObject {
             scheduleTimer()
         }
     }
-    @Published var showsPercentInMenuBar: Bool {
-        didSet { UserDefaults.standard.set(showsPercentInMenuBar, forKey: Keys.showPercent) }
-    }
 
     private var tasks: [AgentKind: Task<Void, Never>] = [:]
     private var timer: Timer?
@@ -49,7 +46,6 @@ final class UsageStore: ObservableObject {
         enabled = Set(AgentKind.allCases.filter { defaults.object(forKey: Keys.enabled($0)) as? Bool ?? true })
         let minutes = defaults.integer(forKey: Keys.refreshMinutes)
         refreshMinutes = minutes > 0 ? minutes : 15
-        showsPercentInMenuBar = defaults.object(forKey: Keys.showPercent) as? Bool ?? true
         scheduleTimer()
     }
 
@@ -71,9 +67,6 @@ final class UsageStore: ObservableObject {
         AgentKind.allCases.filter { enabled.contains($0) && reports[$0] == nil }
     }
 
-    /// The tightest headline across every account: what the menu bar shows.
-    var lowestHeadline: Int? { visibleReports.compactMap(\.headline).min() }
-
     var isLoading: Bool { !loading.isEmpty }
 
     func refreshIfStale() {
@@ -94,13 +87,14 @@ final class UsageStore: ObservableObject {
         let workspace = defaults.string(forKey: Keys.opencodeWorkspace) ?? ""
         let copilotToken = Keychain.read(Keys.copilotToken)
         let cookie = Keychain.read(Keys.opencodeCookie)
+        let cursorCookie = Keychain.read(Keys.cursorCookie)
         tasks[agent] = Task { [weak self] in
             let result: [AgentReport]
             switch agent {
             case .claude: result = [await ClaudeProvider.fetch(env)]
             case .codex: result = await CodexProvider.fetch(env, additionalHomes: codexHomes)
             case .copilot: result = await CopilotProvider.fetch(env, manualToken: copilotToken)
-            case .antigravity: result = [await AntigravityProvider.fetch(env)]
+            case .cursor: result = [await CursorProvider.fetch(env, manualCookie: cursorCookie)]
             case .opencodeGo: result = [await OpenCodeGoProvider.fetch(env, workspaceID: workspace, authCookie: cookie)]
             }
             guard let self else { return }

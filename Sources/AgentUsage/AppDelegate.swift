@@ -17,13 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMainMenu()
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            // The same size as the other menu bar apps' symbols.
+            let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
             button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: "Agent Usage")?
                 .withSymbolConfiguration(configuration)
             button.image?.isTemplate = true
-            button.imagePosition = .imageLeading
             button.action = #selector(statusItemClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -48,18 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         closePanel()
     }
 
-    /// The tightest limit across every agent, beside the icon, so a glance
-    /// says whether anything is about to run out.
+    /// Every agent's number in the icon's tooltip.
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
-        let lowest = store.lowestHeadline
-        if store.showsPercentInMenuBar, let lowest {
-            button.attributedTitle = NSAttributedString(
-                string: " \(lowest)%",
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
-        } else {
-            button.title = ""
-        }
         let lines = store.visibleReports.map { report in
             "\(report.title): \(report.headline.map { "\($0)%" } ?? report.error?.label ?? "—")"
         }

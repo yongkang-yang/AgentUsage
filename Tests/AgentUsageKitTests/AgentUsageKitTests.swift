@@ -153,53 +153,51 @@ final class OpenCodeGoTests: XCTestCase {
     }
 }
 
-final class AntigravityTests: XCTestCase {
-    func testFindsTheAppServerAndItsToken() {
-        let ps = """
-          101 /usr/bin/git status --cwd /Users/me/.antigravity-cli/scratch
-          202 /Applications/Antigravity.app/Contents/Resources/app/extensions/antigravity/bin/language_server_macos_arm --csrf_token abc-123 --extension_server_port 51234 --app_data_dir antigravity
-          303 /Users/me/.antigravity-cli/bin/language_server --random
-        """
-        let (info, saw) = AntigravityProvider.parseProcesses(ps)
-        XCTAssertTrue(saw)
-        XCTAssertEqual(info, .init(pid: 202, csrfToken: "abc-123", extensionPort: 51234))
+/// Ported from the extension's cursor/parser.test.ts.
+final class CursorTests: XCTestCase {
+    func testEnterpriseOverallWhenPlanIsAbsent() {
+        let report = CursorProvider.parse(summary: ["billingCycleEnd": "2026-05-01T00:00:00.000Z", "membershipType": "enterprise",
+                                                    "individualUsage": ["overall": ["used": 7384, "limit": 10000]],
+                                                    "teamUsage": ["pooled": ["used": 12_725_135, "limit": 28_122_000]]],
+                                          user: ["email": "user@example.com", "sub": "auth0|user"], requests: nil, now: now)
+        XCTAssertEqual(report.plan, "Enterprise")
+        XCTAssertEqual(report.headline, 26)
+        XCTAssertEqual(report.groups[0].windows.map(\.note), ["$73.84 / $100.00"])
+        XCTAssertEqual(report.details, ["Account: user@example.com"])
     }
 
-    func testCLIFallbackAndMissingToken() {
-        let (cli, _) = AntigravityProvider.parseProcesses("  9 /opt/homebrew/bin/agy serve")
-        XCTAssertEqual(cli?.csrfToken, "cli-dummy-token")
-        let (none, saw) = AntigravityProvider.parseProcesses("  9 /Applications/Antigravity.app/x/antigravity/language_server --app_data_dir antigravity")
-        XCTAssertNil(none)
-        XCTAssertTrue(saw)
+    func testLegacyRequestsReplaceAutoAndAPI() {
+        let report = CursorProvider.parse(summary: ["individualUsage": ["plan": ["used": 700, "limit": 10000, "autoPercentUsed": 11, "apiPercentUsed": 22]]],
+                                          user: nil, requests: ["gpt-4": ["numRequests": 200, "numRequestsTotal": 240, "maxRequestUsage": 500]], now: now)
+        XCTAssertEqual(report.groups[0].windows.map(\.label), ["Requests"])
+        XCTAssertEqual(report.headline, 52)
     }
 
-    func testParsesPorts() {
-        let lsof = "language 202 me 12u IPv4 0x1 0t0 TCP 127.0.0.1:51235 (LISTEN)\nlanguage 202 me 13u IPv4 0x1 0t0 TCP 127.0.0.1:51234 (LISTEN)\n"
-        XCTAssertEqual(AntigravityProvider.parsePorts(lsof), [51234, 51235])
+    func testPlanTotalAndSeparatePools() {
+        let report = CursorProvider.parse(summary: ["membershipType": "pro",
+                                                    "individualUsage": ["plan": ["used": 1800, "limit": 10000, "autoPercentUsed": 10, "apiPercentUsed": 50]]],
+                                          user: nil, requests: nil, now: now)
+        XCTAssertEqual(report.groups[0].windows.map(\.label), ["Total", "Auto", "API"])
+        XCTAssertEqual(report.groups[0].windows.map(\.percentRemaining), [82, 90, 50])
+        XCTAssertEqual(report.headline, 50)
     }
 
-    func testUserStatusWithQuotaGroupsKeepsThirdPartyOutOfTheHeadline() throws {
-        let status: [String: Any] = ["userStatus": [
-            "email": "me@example.com",
-            "planStatus": ["planInfo": ["planName": "Pro"]],
-            "cascadeModelConfigData": ["clientModelConfigs": [
-                ["label": "Gemini 3 Pro (High)", "modelOrAlias": ["model": "g3p"], "quotaInfo": ["remainingFraction": 0.8]],
-                ["label": "Claude Opus 4.5", "modelOrAlias": ["model": "opus"], "quotaInfo": ["remainingFraction": 0]],
-            ]]]]
-        let summary: [String: Any] = ["response": ["groups": [
-            ["displayName": "Gemini", "buckets": [["displayName": "5 hours", "remainingFraction": 0.6]]],
-            ["displayName": "Other models", "description": "Claude and GPT", "buckets": [["displayName": "Weekly", "remainingFraction": 0]]],
-        ]]]
-        let report = try AntigravityProvider.parseUserStatus(status, quotaSummary: summary, now: now)
-        XCTAssertEqual(report.plan, "Pro")
-        XCTAssertEqual(report.headline, 60)
-        XCTAssertEqual(report.groups.count, 2)
-        XCTAssertEqual(report.details, ["Account: me@example.com"])
+    func testTeamOnDemand() {
+        let report = CursorProvider.parse(summary: ["individualUsage": ["onDemand": ["used": 4471]],
+                                                    "teamUsage": ["onDemand": ["used": 1_311_125, "limit": 2_000_000]]],
+                                          user: nil, requests: nil, now: now)
+        XCTAssertEqual(report.details, ["Team on-demand: $13111.25 / $20000.00 (yours $44.71)"])
+    }
 
-        let modelsOnly = try AntigravityProvider.parseUserStatus(status, quotaSummary: nil, now: now)
-        XCTAssertEqual(modelsOnly.headline, 80)
-        XCTAssertEqual(modelsOnly.groups[0].windows.map(\.label), ["Gemini 3 Pro (High)", "Claude Opus 4.5"])
-        XCTAssertThrowsError(try AntigravityProvider.parseModelConfigs(["code": 5], now: now))
+    func testSessionCookieFromAppToken() {
+        func token(_ payload: String) -> String {
+            "h." + Data(payload.utf8).base64EncodedString().replacingOccurrences(of: "=", with: "") + ".s"
+        }
+        let valid = token(#"{"sub":"auth0|user_01ABC","exp":\#(Int(now.timeIntervalSince1970) + 3600)}"#)
+        XCTAssertEqual(CursorProvider.session(fromAccessToken: valid, now: now)?.cookieHeader,
+                       "WorkosCursorSessionToken=user_01ABC%3A%3A\(valid)")
+        let expiring = token(#"{"sub":"auth0|user_01ABC","exp":\#(Int(now.timeIntervalSince1970) + 30)}"#)
+        XCTAssertNil(CursorProvider.session(fromAccessToken: expiring, now: now))
     }
 }
 

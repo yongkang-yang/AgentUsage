@@ -1,15 +1,14 @@
 # Agent Usage
 
 A native macOS menu bar app that shows how much is left of your AI coding
-agents' plans — Claude Code, Codex, GitHub Copilot, Antigravity and OpenCode Go —
+agents' plans — Claude Code, Codex, GitHub Copilot, Cursor and OpenCode Go —
 at a glance. It is a native port of five providers from the
 [Agent Usage](https://github.com/raycast/extensions/tree/main/extensions/agent-usage)
 Raycast extension, without Raycast running underneath it.
 
 ## Use
 
-- The menu bar shows a gauge and the **lowest remaining percentage** across every
-  agent (switch the number off in Settings). Hover for each agent's number.
+- The menu bar shows a gauge icon. Hover it for each agent's number.
 - **Click** for a Liquid Glass panel with a card per agent account: plan, the
   headline percentage, a bar per limit with its reset time, and extra facts
   (credits, reset credits, extra usage). **Right-click** for every agent's number
@@ -29,11 +28,11 @@ green from 50 %, amber from 20 %, red below.
 | **Claude Code** | Anthropic's OAuth usage endpoint, with Claude Code's own login (keychain, or `~/.claude/.credentials.json`) | Run `claude` and sign in |
 | **Codex** | ChatGPT's Codex usage endpoint, for every login in `~/.codex` (`auth.json` and `accounts/*.auth.json`) | Run `codex login`; add more Codex homes in Settings |
 | **GitHub Copilot** | GitHub's `copilot_internal/user` endpoint | `gh auth login`, or `GITHUB_TOKEN`/`GH_TOKEN` in your shell, or a token in Settings |
-| **Antigravity** | The running Antigravity language server's local API | Keep Antigravity open |
+| **Cursor** | cursor.com's dashboard API, with the login Cursor.app keeps | Sign in to Cursor.app, or paste a cursor.com Cookie header in Settings |
 | **OpenCode Go** | The workspace's Go page on opencode.ai (there's no API) | Workspace ID and `auth` cookie in Settings |
 
 Each agent can be switched off in Settings → Agents. Tokens you enter (Copilot,
-OpenCode Go's cookie) are kept in the login keychain.
+Cursor's and OpenCode Go's cookies) are kept in the login keychain.
 
 Details carried over from the extension:
 
@@ -46,16 +45,16 @@ Details carried over from the extension:
   credits and rate-limit reset credits. Several logins appear as separate cards.
 - **Copilot**: AI credits (premium requests) and chat. The same token found in
   several places is one account.
-- **Antigravity**: quota groups when the server reports them, otherwise per-model
-  quotas. Third-party pools (Claude, GPT) are listed but don't pull the headline
-  down.
+- **Cursor**: total plan usage with the Auto and API pools, or request counts on
+  older plans; on-demand spend (yours and the team's). The headline is the
+  tighter of Auto and API.
 - **OpenCode Go**: rolling (2 h), weekly and monthly usage; monthly is the headline.
 
 ### Moving over from the Raycast extension
 
 Most agents need nothing: they read the same local logins the extension did. Copy
-the **OpenCode Go workspace ID and auth cookie**, a **Copilot token** if you had
-set one, and any **additional Codex homes** from Raycast → Settings → Extensions →
+the **OpenCode Go workspace ID and auth cookie**, a **Copilot token** or **Cursor
+cookie** if you had set one, and any **additional Codex homes** from Raycast → Settings → Extensions →
 Agent Usage into Settings → Agents.
 
 ## Build
