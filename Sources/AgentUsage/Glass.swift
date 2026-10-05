@@ -100,8 +100,8 @@ struct GlassPillButton: View {
 /// Inner corners are concentric with the panel's: each radius is the outer
 /// one minus the padding between them, so the curves run parallel.
 enum Metrics {
-    static let panelWidth: CGFloat = 400
-    static let panelHeight: CGFloat = 580
+    static let panelWidth: CGFloat = 340
+    static let panelHeight: CGFloat = 500
     static let panelRadius: CGFloat = 26
     static let panelPadding: CGFloat = 14
     static let cardRadius: CGFloat = panelRadius - panelPadding
