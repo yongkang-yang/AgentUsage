@@ -28,6 +28,6 @@
 		<true/>
 	</dict>
 	<key>NSHumanReadableCopyright</key>
-	<string>GPL-3.0-or-later</string>
+	<string>MIT</string>
 </dict>
 </plist>

@@ -79,6 +79,6 @@ to choose one) so its keychain items survive rebuilds, and installs it over
 
 ## License
 
-[GPL-3.0-or-later](LICENSE). The provider logic and agent icons are ported from
+[MIT](LICENSE). The provider logic and agent icons are ported from
 the MIT-licensed Agent Usage Raycast extension; see [NOTICE](NOTICE). Product
 names and logos belong to their owners; this is an unofficial client.

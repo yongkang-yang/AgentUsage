@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Draws Resources/AppIcon.icns: a white glyph on a full-bleed gradient. macOS
 // 26 and later cut app icons to their own shape, so the art runs edge to edge
 // and the corners are left to the system.
